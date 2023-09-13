@@ -1,6 +1,6 @@
 module github.com/chelseajonesr/rfarrow
 
-go 1.21
+go 1.20
 
 require github.com/apache/arrow/go/v13 v13.0.0
 
