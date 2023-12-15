@@ -18,10 +18,10 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/apache/arrow/go/v13/parquet"
-	"github.com/apache/arrow/go/v13/parquet/compress"
-	"github.com/apache/arrow/go/v13/parquet/pqarrow"
-	"github.com/apache/arrow/go/v13/parquet/schema"
+	"github.com/apache/arrow/go/v14/parquet"
+	"github.com/apache/arrow/go/v14/parquet/compress"
+	"github.com/apache/arrow/go/v14/parquet/pqarrow"
+	"github.com/apache/arrow/go/v14/parquet/schema"
 )
 
 func ptr[T any](v T) *T {
