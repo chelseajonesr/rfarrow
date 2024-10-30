@@ -398,6 +398,7 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 		ID     int32      `parquet:"name=id"`
 		Value  int64      `parquet:"name=value"`
 		Detail ChildType1 `parquet:"name=detail"`
+		Ext    string     `parquet:"name=ext"`
 	}
 
 	type ChildType2 struct {
@@ -409,12 +410,13 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 		AChildType2 ChildType2 `parquet:"name=detail"`
 		ID          int        `parquet:"name=id"`
 		Recorded    int32      `parquet:"name=value"`
+		Ext         []byte     `parquet:"name=ext"`
 	}
 
 	original := []NestedTypes1{
-		{ID: 1, Value: 100, Detail: ChildType1{Count: 50, Direction: 1}},
-		{ID: 2, Value: 101, Detail: ChildType1{Count: 25, Direction: 0}},
-		{ID: 3, Value: 1, Detail: ChildType1{Count: 17, Direction: 1}},
+		{ID: 1, Value: 100, Detail: ChildType1{Count: 50, Direction: 1}, Ext: "hello"},
+		{ID: 2, Value: 101, Detail: ChildType1{Count: 25, Direction: 0}, Ext: ""},
+		{ID: 3, Value: 1, Detail: ChildType1{Count: 17, Direction: 1}, Ext: "3!! Or maybe 2?"},
 	}
 	buf := new(bytes.Buffer)
 	err := WriteGoStructsToParquet(original, buf, nil)
@@ -428,9 +430,9 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 	}
 
 	expected := []*NestedTypes2{
-		{ID: 1, Recorded: 100, AChildType2: ChildType2{Counter: 50, Direction: 1}},
-		{ID: 2, Recorded: 101, AChildType2: ChildType2{Counter: 25, Direction: 0}},
-		{ID: 3, Recorded: 1, AChildType2: ChildType2{Counter: 17, Direction: 1}},
+		{ID: 1, Recorded: 100, AChildType2: ChildType2{Counter: 50, Direction: 1}, Ext: []byte("hello")},
+		{ID: 2, Recorded: 101, AChildType2: ChildType2{Counter: 25, Direction: 0}, Ext: []byte{}},
+		{ID: 3, Recorded: 1, AChildType2: ChildType2{Counter: 17, Direction: 1}, Ext: []byte("3!! Or maybe 2?")},
 	}
 
 	if !reflect.DeepEqual(deserialized, expected) {

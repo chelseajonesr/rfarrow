@@ -238,6 +238,10 @@ func goValueFromArrowArray(goValue reflect.Value, arrowArray arrow.Array, arrayO
 			arrowValue := typedArrowArray.Value(arrayOffset)
 			elem.SetString(arrowValue)
 			return nil
+		case *array.Binary:
+			arrowValue := typedArrowArray.ValueString(arrayOffset)
+			elem.SetString(arrowValue)
+			return nil
 		default:
 			return errors.Join(ErrorArrowConversion, fmt.Errorf("unable to convert %s to string", typedArrowArray.DataType().Name()))
 		}
@@ -289,6 +293,9 @@ func goValueFromArrowArray(goValue reflect.Value, arrowArray arrow.Array, arrayO
 			start, end = typedArrowArray.ValueOffsets(arrayOffset)
 			values = typedArrowArray.ListValues()
 		case *array.FixedSizeBinary:
+			bytes := typedArrowArray.Value(arrayOffset)
+			elem.SetBytes(bytes)
+		case *array.Binary:
 			bytes := typedArrowArray.Value(arrayOffset)
 			elem.SetBytes(bytes)
 		default:
@@ -561,7 +568,12 @@ func AppendGoValueToArrowBuilder(v reflect.Value, builder array.Builder, goNameP
 		}
 		builder.(*array.Uint64Builder).Append(i)
 	case arrow.BINARY:
-		builder.(*array.BinaryBuilder).Append(v.Bytes())
+		switch v.Kind() {
+		case reflect.String:
+			builder.(*array.BinaryBuilder).Append([]byte(v.String()))
+		default:
+			builder.(*array.BinaryBuilder).Append(v.Bytes())
+		}
 	case arrow.BOOL:
 		builder.(*array.BooleanBuilder).Append(v.Bool())
 	case arrow.DATE32:
