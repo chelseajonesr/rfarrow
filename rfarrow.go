@@ -37,7 +37,7 @@ var (
 )
 
 // / Convert Parquet to an array of Go structs of type T
-func ReadGoStructsFromParquet[T any](reader parquet.ReaderAtSeeker) ([]*T, error) {
+func ReadGoStructsFromParquet[T any](reader parquet.ReaderAtSeeker, skipFieldsNotFound bool) ([]*T, error) {
 	parquetReader, err := file.NewParquetReader(reader)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func ReadGoStructsFromParquet[T any](reader parquet.ReaderAtSeeker) ([]*T, error
 
 	// Get mappings between struct member names and parquet/arrow names so we don't have to look them up repeatedly
 	// during record assignments
-	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false)
+	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false, skipFieldsNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +475,7 @@ func NewStructBuilderFromStructsWithAdditionalNullRows[T any](values []T, prepen
 
 	// Get mappings between struct member names and parquet/arrow names so we don't have to look them up repeatedly
 	// during record assignments
-	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false)
+	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -714,16 +714,16 @@ func goValueUint64(v reflect.Value) (uint64, error) {
 // Returns a map of field names to indices
 // Any fields whose names match entries in goNamesToExclude will be left out, and if indicesIgnoreExcludedFields is set to true,
 // then the indices will ignore the excluded fields.
-func MapGoStructFieldNamesToArrowIndices[T any](arrowFields []arrow.Field, goNamesToExclude []string, indicesIgnoreExcludedFields bool) (map[string]int, error) {
+func MapGoStructFieldNamesToArrowIndices[T any](arrowFields []arrow.Field, goNamesToExclude []string, indicesIgnoreExcludedFields bool, skipFieldsNotFound bool) (map[string]int, error) {
 	var structValue [0]T
 	structType := reflect.TypeOf(structValue).Elem()
 	structFieldNameToArrowIndexMappings := make(map[string]int, len(arrowFields)*2)
-	err := mapGoStructFieldNamesToArrowIndices(structType, "", arrowFields, goNamesToExclude, indicesIgnoreExcludedFields, structFieldNameToArrowIndexMappings)
+	err := mapGoStructFieldNamesToArrowIndices(structType, "", arrowFields, goNamesToExclude, indicesIgnoreExcludedFields, structFieldNameToArrowIndexMappings, skipFieldsNotFound)
 	return structFieldNameToArrowIndexMappings, err
 }
 
 // Recursive function to map struct field names to arrow field indices
-func mapGoStructFieldNamesToArrowIndices(goStructType reflect.Type, goNamePrefix string, arrowFields []arrow.Field, goNamesToExclude []string, indicesIgnoreExcludedFields bool, goNameArrowIndexMap map[string]int) error {
+func mapGoStructFieldNamesToArrowIndices(goStructType reflect.Type, goNamePrefix string, arrowFields []arrow.Field, goNamesToExclude []string, indicesIgnoreExcludedFields bool, goNameArrowIndexMap map[string]int, skipFieldsNotFound bool) error {
 	for goStructType.Kind() == reflect.Pointer {
 		goStructType = goStructType.Elem()
 	}
@@ -785,12 +785,16 @@ func mapGoStructFieldNamesToArrowIndices(goStructType reflect.Type, goNamePrefix
 					}
 				}
 				if !found {
+					if skipFieldsNotFound {
+						skippedFields++
+						continue processGoStructField
+					}
 					return fmt.Errorf("schema conversion error: could not find %s in arrow fields", parquetName)
 				}
 
 				arrowStructMemberFields := nestedArrowFields(arrowField)
 				if arrowStructMemberFields != nil {
-					err := mapGoStructFieldNamesToArrowIndices(field.Type, fieldName, arrowStructMemberFields, goNamesToExclude, indicesIgnoreExcludedFields, goNameArrowIndexMap)
+					err := mapGoStructFieldNamesToArrowIndices(field.Type, fieldName, arrowStructMemberFields, goNamesToExclude, indicesIgnoreExcludedFields, goNameArrowIndexMap, skipFieldsNotFound)
 					if err != nil {
 						return err
 					}
@@ -806,7 +810,7 @@ func mapGoStructFieldNamesToArrowIndices(goStructType reflect.Type, goNamePrefix
 			arrowStructMemberFields = nestedArrowFields(arrowStructMemberFields[1])
 		}
 		if arrowStructMemberFields != nil {
-			err := mapGoStructFieldNamesToArrowIndices(field, goNamePrefix, arrowStructMemberFields, goNamesToExclude, indicesIgnoreExcludedFields, goNameArrowIndexMap)
+			err := mapGoStructFieldNamesToArrowIndices(field, goNamePrefix, arrowStructMemberFields, goNamesToExclude, indicesIgnoreExcludedFields, goNameArrowIndexMap, skipFieldsNotFound)
 			if err != nil {
 				return err
 			}

@@ -114,7 +114,7 @@ func compareRoundTripWithAdjustments[T any](t *testing.T, values []T, adjustExpe
 		t.Fatal(err)
 	}
 	bytesReader := bytes.NewReader(buf.Bytes())
-	results, err := ReadGoStructsFromParquet[T](bytesReader)
+	results, err := ReadGoStructsFromParquet[T](bytesReader, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestMapGoStructFieldNamesToArrowIndices(t *testing.T) {
 
 	// Get mappings between struct member names and parquet/arrow names so we don't have to look them up repeatedly
 	// during record assignments
-	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[SimpleTypes](arrowFields, []string{}, false)
+	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[SimpleTypes](arrowFields, []string{}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestMapGoStructFieldNamesToArrowIndices(t *testing.T) {
 	}
 	arrowFields = arrowSchema.Fields()
 
-	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypes](arrowFields, []string{}, false)
+	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypes](arrowFields, []string{}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestMapGoStructFieldNamesToArrowIndices(t *testing.T) {
 	}
 
 	// Skip some fields, leaving indices as is
-	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypes](arrowFields, []string{"AnInt64", "AChildType.AnInt"}, false)
+	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypes](arrowFields, []string{"AnInt64", "AChildType.AnInt"}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestMapGoStructFieldNamesToArrowIndices(t *testing.T) {
 	}
 
 	// Skip some fields, also skipping indices
-	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypes](arrowFields, []string{"AnInt64", "AChildType.AnInt"}, true)
+	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypes](arrowFields, []string{"AnInt64", "AChildType.AnInt"}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,6 +383,40 @@ func TestMapGoStructFieldNamesToArrowIndices(t *testing.T) {
 		"AChildType":        1,
 		"AChildType.AnInt8": 0,
 	}
+	if !reflect.DeepEqual(expectedMap, structFieldNameToArrowIndexMappings) {
+		t.Errorf("expected %v, got %v", expectedMap, structFieldNameToArrowIndexMappings)
+	}
+
+	// Extra fields in the Go struct that won't be in the arrow schema
+	type NestedTypesExtraGoFields struct {
+		ABool      bool      `parquet:"name=aBool"` // extra field
+		AnInt32    int32     `parquet:"name=anInt32"`
+		AnInt32v2  int32     `parquet:"name=anInt32v2"` // extra field
+		AnInt64    int64     `parquet:"name=anInt64"`
+		AChildType ChildType `parquet:"name=aChildType"`
+		AnInt32v3  int32     `parquet:"name=anInt32v3"` // extra field
+	}
+
+	// Trying to read a struct with extra fields should fail when skipFieldsNotFound is false
+	_, err = MapGoStructFieldNamesToArrowIndices[NestedTypesExtraGoFields](arrowFields, []string{}, false, false)
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+
+	// Trying to read a struct with extra fields should succeed when skipFieldsNotFound is true
+	structFieldNameToArrowIndexMappings, err = MapGoStructFieldNamesToArrowIndices[NestedTypesExtraGoFields](arrowFields, []string{}, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedMap = map[string]int{
+		"AnInt32":           0,
+		"AnInt64":           1,
+		"AChildType":        2,
+		"AChildType.AnInt":  0,
+		"AChildType.AnInt8": 1,
+	}
+
 	if !reflect.DeepEqual(expectedMap, structFieldNameToArrowIndexMappings) {
 		t.Errorf("expected %v, got %v", expectedMap, structFieldNameToArrowIndexMappings)
 	}
@@ -413,6 +447,15 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 		Ext         []byte     `parquet:"name=ext"`
 	}
 
+	type NestedTypes2WithExtraFields struct {
+		Extra1      int        `parquet:"name=extra1"`
+		AChildType2 ChildType2 `parquet:"name=detail"`
+		ID          int        `parquet:"name=id"`
+		Recorded    int32      `parquet:"name=value"`
+		Extra2      int        `parquet:"name=extra2"`
+		Ext         []byte     `parquet:"name=ext"`
+	}
+
 	original := []NestedTypes1{
 		{ID: 1, Value: 100, Detail: ChildType1{Count: 50, Direction: 1}, Ext: "hello"},
 		{ID: 2, Value: 101, Detail: ChildType1{Count: 25, Direction: 0}, Ext: ""},
@@ -424,7 +467,7 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deserialized, err := ReadGoStructsFromParquet[NestedTypes2](bytes.NewReader(buf.Bytes()))
+	deserialized, err := ReadGoStructsFromParquet[NestedTypes2](bytes.NewReader(buf.Bytes()), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,6 +480,25 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 
 	if !reflect.DeepEqual(deserialized, expected) {
 		t.Errorf("expected %v, found %v", expected, deserialized)
+	}
+
+	_, err = ReadGoStructsFromParquet[NestedTypes2WithExtraFields](bytes.NewReader(buf.Bytes()), false)
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+
+	deserializedWithExtraFields, err := ReadGoStructsFromParquet[NestedTypes2WithExtraFields](bytes.NewReader(buf.Bytes()), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedWithExtraFields := []*NestedTypes2WithExtraFields{
+		{Extra1: 0, ID: 1, Recorded: 100, AChildType2: ChildType2{Counter: 50, Direction: 1}, Extra2: 0, Ext: []byte("hello")},
+		{Extra1: 0, ID: 2, Recorded: 101, AChildType2: ChildType2{Counter: 25, Direction: 0}, Extra2: 0, Ext: []byte{}},
+		{Extra1: 0, ID: 3, Recorded: 1, AChildType2: ChildType2{Counter: 17, Direction: 1}, Extra2: 0, Ext: []byte("3!! Or maybe 2?")},
+	}
+
+	if !reflect.DeepEqual(deserializedWithExtraFields, expectedWithExtraFields) {
+		t.Errorf("expected %v, found %v", expectedWithExtraFields, deserializedWithExtraFields)
 	}
 }
 
