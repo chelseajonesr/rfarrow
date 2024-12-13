@@ -37,7 +37,7 @@ var (
 )
 
 // / Convert Parquet to an array of Go structs of type T
-func ReadGoStructsFromParquet[T any](reader parquet.ReaderAtSeeker, skipFieldsNotFound bool) ([]*T, error) {
+func ReadGoStructsFromParquet[T any](reader parquet.ReaderAtSeeker) ([]*T, error) {
 	parquetReader, err := file.NewParquetReader(reader)
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func ReadGoStructsFromParquet[T any](reader parquet.ReaderAtSeeker, skipFieldsNo
 
 	// Get mappings between struct member names and parquet/arrow names so we don't have to look them up repeatedly
 	// during record assignments
-	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false, skipFieldsNotFound)
+	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +475,7 @@ func NewStructBuilderFromStructsWithAdditionalNullRows[T any](values []T, prepen
 
 	// Get mappings between struct member names and parquet/arrow names so we don't have to look them up repeatedly
 	// during record assignments
-	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false, false)
+	structFieldNameToArrowIndexMappings, err := MapGoStructFieldNamesToArrowIndices[T](arrowFields, []string{}, false, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -786,7 +786,6 @@ func mapGoStructFieldNamesToArrowIndices(goStructType reflect.Type, goNamePrefix
 				}
 				if !found {
 					if skipFieldsNotFound {
-						skippedFields++
 						continue processGoStructField
 					}
 					return fmt.Errorf("schema conversion error: could not find %s in arrow fields", parquetName)

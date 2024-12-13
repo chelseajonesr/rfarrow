@@ -114,7 +114,7 @@ func compareRoundTripWithAdjustments[T any](t *testing.T, values []T, adjustExpe
 		t.Fatal(err)
 	}
 	bytesReader := bytes.NewReader(buf.Bytes())
-	results, err := ReadGoStructsFromParquet[T](bytesReader, false)
+	results, err := ReadGoStructsFromParquet[T](bytesReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deserialized, err := ReadGoStructsFromParquet[NestedTypes2](bytes.NewReader(buf.Bytes()), false)
+	deserialized, err := ReadGoStructsFromParquet[NestedTypes2](bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,12 +482,7 @@ func TestSerializeDeserializeDifferentType(t *testing.T) {
 		t.Errorf("expected %v, found %v", expected, deserialized)
 	}
 
-	_, err = ReadGoStructsFromParquet[NestedTypes2WithExtraFields](bytes.NewReader(buf.Bytes()), false)
-	if err == nil {
-		t.Error("expected error, got nil")
-	}
-
-	deserializedWithExtraFields, err := ReadGoStructsFromParquet[NestedTypes2WithExtraFields](bytes.NewReader(buf.Bytes()), true)
+	deserializedWithExtraFields, err := ReadGoStructsFromParquet[NestedTypes2WithExtraFields](bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
